@@ -90,4 +90,4 @@ if __name__ == "__main__":
         for repo in repos:
             scrape_repo_issues(repo)
             scrape_repo_prs(repo)
-            scrapes.labels(repo).inc()
+            SCRAPES.labels(repo).inc()
