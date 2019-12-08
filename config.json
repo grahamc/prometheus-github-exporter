@@ -1,0 +1,4 @@
+{
+    "port": 9101,
+    "repos": [ "NixOS/nixpkgs" ]
+}
