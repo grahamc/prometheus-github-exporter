@@ -79,6 +79,39 @@ def scrape_repo_issues(repo):
         issues.labels(repo, labelval(state)).set(count_search_results(q))
 
 
+scheduled_workflows = Gauge(
+    "github_scheduled_workflow_last_success",
+    "Unix timestamp of latest completed run of scheduled GitHub workflows",
+    ["repo", "branch", "workflow"],
+)
+
+
+def scrape_repo_workflows(repo):
+    # This uses the 'core' API ratelimit (https://docs.github.com/en/free-pro-team@latest/rest/reference/rate-limit) which is accounted separately.
+    # We get 1 request per second (60/min), but are slightly more conservative than that.
+    sleep(2)
+    # Caveat: we don't paginate. If any particular workflow is spammy and runs often enough
+    # that it pushes out any less-often-running workflows, then they'll go missing.
+    workflow_runs = requests.get(
+        f"https://api.github.com/repos/{repo}/actions/runs?event=schedule&status=success"
+    ).json()["workflow_runs"]
+
+    last_successes = {}
+    for workflow_run in workflow_runs:
+        workflow_key = (workflow_run["head_branch"], workflow_run["name"])
+        last_success = last_successes.get(workflow_key, 0)
+        last_successes[workflow_key] = max(
+            datetime.datetime.strptime(
+                workflow_run["updated_at"], "%Y-%m-%dT%H:%M:%SZ"
+            ).timestamp(),
+            last_success,
+        )
+
+    for workflow_key, last_success in last_successes.items():
+        branch, workflow = workflow_key
+        scheduled_workflows.labels(repo, branch, workflow).set(int(last_success))
+
+
 if __name__ == "__main__":
     with open(sys.argv[1]) as config_file:
         config = json.load(config_file)
@@ -90,4 +123,5 @@ if __name__ == "__main__":
         for repo in repos:
             scrape_repo_issues(repo)
             scrape_repo_prs(repo)
+            scrape_repo_workflows(repo)
             SCRAPES.labels(repo).inc()
